@@ -4,6 +4,7 @@ This streamlit application will allow the users to veiw stock prices and histori
 """
 
 import streamlit as st
+import numpy as np
 import plotly.express as px
 import pandas as pd
 import yfinance as yf
@@ -20,6 +21,9 @@ def average(tickerDf:pd.DataFrame, column:str) -> float:
     sum_of_column = tickerDf[column].sum()
     avg = sum_of_column / len(tickerDf.index)
     return avg
+
+def SMA(data: pd.DataFrame, period=30, column='Close'):
+    return data[column].rolling(window=period).mean()
 
 st.set_page_config(
     page_title = "Stock Info App (Home)",
@@ -44,15 +48,24 @@ with st.form(key = 'my_form'):
 
     
 try:
+    # gets the data from the inputed ticker
     tickerData = yf.Ticker(user_input)
+
+    # extracts data for the metrics
     tickerName = tickerData.info['longName']
-    currentMarketPrice = tickerData.info['regularMarketPrice']
+    currentMarketPrice = tickerData.info['currentPrice']
     previousClosingPrice = tickerData.info['regularMarketPreviousClose']
     deltaPrice = ((currentMarketPrice - previousClosingPrice)/previousClosingPrice) * 100
+
+    # gets the historical data for the ticker as a pandas dataframe
     tickerDf = pd.DataFrame(tickerData.history(
         period = '1y', 
         start = datetime.today().date() - timedelta(days = 365),
         end = datetime.today().date()))
+
+    # gets the simple moving averages for the ticker 
+    tickerDf['SMA20'] = SMA(tickerDf, 20)
+    tickerDf['SMA50'] = SMA(tickerDf, 50)
 
     st.subheader(tickerName)
 
@@ -62,15 +75,26 @@ try:
     col2.metric("Current Market Price", currentMarketPrice, f"{float(round(deltaPrice, 2))}%")
 
     for i in range(len(plot)):
-        plt = px.line(
-            tickerDf,
-            x = tickerDf.index,
-            y = plot[i],
-            labels = {
-                plot[i]: f"{plot[i]} Price ($)"
-            },
-            title = f"{plot[i]} prices over the course of one year"
-        )
+        if plot[i] == 'Close':
+            plt = px.line(
+                tickerDf,
+                x = tickerDf.index,
+                y = [plot[i], 'SMA20', 'SMA50'],
+                labels = {
+                    plot[i]: f"{plot[i]} Price ($)"
+                },
+                title = f"{plot[i]} prices over the course of one year"
+            )
+        else:
+            plt = px.line(
+                tickerDf,
+                x = tickerDf.index,
+                y = [plot[i]],
+                labels = {
+                    plot[i]: f"{plot[i]} Price ($)"
+                },
+                title = f"{plot[i]} prices over the course of one year"
+            )
 
         st.plotly_chart(plt)
 
@@ -78,8 +102,8 @@ try:
         - The average **{plot[i]}** price over the past year is ${round(average(tickerDf, plot[i]), 2)}
         """)
         st.markdown("---")
-except KeyError:
+except:
     if user_input == "":
-       st.markdown("Enter a **ticker symbol**") 
+        st.markdown("Enter a **ticker symbol**") 
     else:
         st.markdown("This is an **Invalid** ticker")
